@@ -1,0 +1,14 @@
+{
+  "name": "narrivox-ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=.env server.js",
+    "test": "node --env-file=.env tests/server.test.js"
+  },
+  "dependencies": {
+    "@huggingface/inference": "^4.13.15",
+    "mongodb": "^7.2.0"
+  }
+}
