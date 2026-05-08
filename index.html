@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Narrivox AI</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section id="login-view" class="login-view">
+        <div class="login-copy">
+          <p class="eyebrow">Narrivox AI Studio</p>
+          <img
+            class="brand-logo"
+            src="./assets/narrivox-logo.jpeg"
+            alt="Narrivox AI logo"
+          />
+          <h1>Write sharper YouTube scripts with a branded AI workspace.</h1>
+          <p class="lede">
+            Sign in with your email to open your script dashboard, save generation
+            history, and shape scripts with tones ranging from satire to criticism
+            to movie-review style breakdowns.
+          </p>
+          <div class="feature-chips">
+            <span>Gemini powered</span>
+            <span>History sidebar</span>
+            <span>Email login</span>
+          </div>
+        </div>
+
+        <section class="glass-card auth-card">
+          <div class="auth-tabs" role="tablist" aria-label="Authentication tabs">
+            <button
+              id="show-login-button"
+              type="button"
+              class="tab-button active"
+              role="tab"
+              aria-selected="true"
+            >
+              Login
+            </button>
+            <button
+              id="show-signup-button"
+              type="button"
+              class="tab-button"
+              role="tab"
+              aria-selected="false"
+            >
+              Sign Up
+            </button>
+          </div>
+
+          <form id="login-form" class="auth-form">
+            <div class="section-heading">
+              <h2>Email Login</h2>
+              <p>Sign in to open your saved scripts and continue from any previous session.</p>
+            </div>
+
+            <label>
+              <span>Email address</span>
+              <input
+                id="login-email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                placeholder="creator@narrivox.ai"
+                required
+              />
+            </label>
+
+            <label>
+              <span>Password</span>
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                placeholder="Enter password"
+                required
+              />
+            </label>
+
+            <button type="submit" class="primary-button">Enter Workspace</button>
+          </form>
+
+          <form id="signup-form" class="auth-form hidden">
+            <div class="section-heading">
+              <h2>Create Account</h2>
+              <p>Your login details and script history are stored in the app database.</p>
+            </div>
+
+            <label>
+              <span>Email address</span>
+              <input
+                id="signup-email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                placeholder="you@narrivox.ai"
+                required
+              />
+            </label>
+
+            <label>
+              <span>Password</span>
+              <input
+                id="signup-password"
+                name="password"
+                type="password"
+                autocomplete="new-password"
+                placeholder="At least 8 characters"
+                required
+              />
+            </label>
+
+            <button type="submit" class="primary-button">Create Account</button>
+          </form>
+
+          <p id="auth-status" class="helper-text">Create an account or log in to sync scripts with the database.</p>
+        </section>
+      </section>
+
+      <section id="workspace-view" class="workspace-view hidden" aria-label="Narrivox AI workspace">
+        <aside class="sidebar glass-card">
+          <div class="sidebar-brand">
+            <img
+              class="sidebar-logo"
+              src="./assets/narrivox-logo.jpeg"
+              alt="Narrivox AI logo"
+            />
+            <div>
+              <p class="eyebrow">Narrivox AI</p>
+              <h2>Script Vault</h2>
+            </div>
+          </div>
+
+          <div class="sidebar-user">
+            <p>Signed in as</p>
+            <strong id="user-email">creator@narrivox.ai</strong>
+          </div>
+
+          <div class="sidebar-stats">
+            <div class="stat-card">
+              <span>Saved scripts</span>
+              <strong id="history-count">0</strong>
+            </div>
+            <div class="stat-card">
+              <span>Latest tone</span>
+              <strong id="latest-tone">None yet</strong>
+            </div>
+          </div>
+
+          <div class="sidebar-actions">
+            <button id="new-script-button" type="button" class="secondary-button">New Script</button>
+            <button id="logout-button" type="button" class="ghost-button">Log Out</button>
+          </div>
+
+          <div class="history-block">
+            <div class="section-heading compact">
+              <h3>History</h3>
+              <p>Recent scripts synced from the Narrivox database.</p>
+            </div>
+            <label class="history-search">
+              <span>Search history</span>
+              <input id="history-search" type="search" placeholder="Search topic or tone" />
+            </label>
+            <div id="history-list" class="history-list"></div>
+          </div>
+        </aside>
+
+        <section class="workspace-main">
+          <header class="hero-panel glass-card">
+            <div class="hero-text">
+              <p class="eyebrow">Narrivox AI Writer</p>
+              <h1>Build scripts with a stronger point of view.</h1>
+              <p class="lede">
+                Generate hooks, title angles, full scripts, and visual cues with
+                editorial tones like satire, criticism, documentary analysis,
+                commentary, and movie-review pacing.
+              </p>
+            </div>
+            <img
+              class="hero-logo"
+              src="./assets/narrivox-logo.jpeg"
+              alt="Narrivox AI logo"
+            />
+          </header>
+
+          <section class="workspace-grid">
+            <form id="script-form" class="glass-card form-panel">
+              <div class="section-heading">
+                <h2>Video Brief</h2>
+                <p>Shape the angle before the model starts writing.</p>
+              </div>
+
+              <label>
+                <span>Topic</span>
+                <input
+                  id="topic"
+                  name="topic"
+                  type="text"
+                  placeholder="Why modern horror movie trailers give away too much"
+                  required
+                />
+              </label>
+
+              <div class="split">
+                <label>
+                  <span>Audience</span>
+                  <input
+                    id="audience"
+                    name="audience"
+                    type="text"
+                    placeholder="Movie lovers, film students, and YouTube essay fans"
+                    required
+                  />
+                </label>
+
+                <label>
+                  <span>Tone</span>
+                  <select id="tone" name="tone" required>
+                    <option value="Clear and motivational">Clear and motivational</option>
+                    <option value="Bold and persuasive">Bold and persuasive</option>
+                    <option value="Friendly and educational">Friendly and educational</option>
+                    <option value="High-energy and punchy">High-energy and punchy</option>
+                    <option value="Satirical and witty">Satirical and witty</option>
+                    <option value="Critical and analytical">Critical and analytical</option>
+                    <option value="Movie review style">Movie review style</option>
+                    <option value="Deep-dive commentary">Deep-dive commentary</option>
+                    <option value="Investigative and skeptical">Investigative and skeptical</option>
+                    <option value="Cultural criticism">Cultural criticism</option>
+                    <option value="Documentary voice">Documentary voice</option>
+                    <option value="Comedic roast">Comedic roast</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="split">
+                <label>
+                  <span>Duration</span>
+                  <select id="duration" name="duration" required>
+                    <option value="4 to 6 minutes">4 to 6 minutes</option>
+                    <option value="60 seconds">60 seconds</option>
+                    <option value="8 to 10 minutes">8 to 10 minutes</option>
+                    <option value="12 to 15 minutes">12 to 15 minutes</option>
+                    <option value="15 to 20 minutes">15 to 20 minutes</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Goal</span>
+                  <input
+                    id="objective"
+                    name="objective"
+                    type="text"
+                    placeholder="Drive comments and position the channel as smart but entertaining"
+                  />
+                </label>
+              </div>
+
+              <label>
+                <span>Key points or facts</span>
+                <textarea
+                  id="keyPoints"
+                  name="keyPoints"
+                  rows="5"
+                  placeholder="Mention spoiler-heavy marketing, audience trust, one recent film example, and how restraint can improve anticipation."
+                ></textarea>
+              </label>
+
+              <label>
+                <span>Call to action</span>
+                <input
+                  id="callToAction"
+                  name="callToAction"
+                  type="text"
+                  placeholder="Ask viewers to comment on the last trailer that spoiled a movie for them"
+                />
+              </label>
+
+              <button id="generate-button" type="submit" class="primary-button">Generate Script</button>
+              <p class="helper-text">Set `GEMINI_API_KEY` before running the server.</p>
+            </form>
+
+            <section class="glass-card output-panel" aria-live="polite">
+              <div class="output-header">
+                <div class="section-heading">
+                  <h2>Generated Script</h2>
+                  <p id="status">Ready for your next idea.</p>
+                </div>
+                <div class="status-pill" id="active-tone">Tone: Clear and motivational</div>
+              </div>
+
+              <div class="thumbnail-panel">
+                <div class="thumbnail-header">
+                  <div class="section-heading compact">
+                    <h3>Thumbnail</h3>
+                    <p>Generate and preview a 16:9 thumbnail for the active script.</p>
+                  </div>
+                  <button id="generate-thumbnail-button" type="button" class="secondary-button">
+                    Generate Thumbnail
+                  </button>
+                </div>
+
+                <div id="thumbnail-empty" class="thumbnail-empty">
+                  Generate a script first, then create a thumbnail for it.
+                </div>
+                <img
+                  id="thumbnail-image"
+                  class="thumbnail-image hidden"
+                  alt="Generated YouTube thumbnail preview"
+                />
+              </div>
+
+              <pre id="output" class="output-card">Your script will appear here.</pre>
+            </section>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

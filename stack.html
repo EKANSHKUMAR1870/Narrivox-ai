@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Skyline Stack</title>
+    <link rel="stylesheet" href="./stack.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <canvas id="game-canvas" aria-label="Skyline Stack game canvas"></canvas>
+
+      <section class="hud hud-top" aria-label="Game status">
+        <div class="brand-mark">
+          <span class="brand-icon" aria-hidden="true"></span>
+          <div>
+            <p>Skyline Stack</p>
+            <strong id="game-state">Tap to place</strong>
+          </div>
+        </div>
+
+        <div class="score-grid">
+          <div>
+            <span>Score</span>
+            <strong id="score">0</strong>
+          </div>
+          <div>
+            <span>Best</span>
+            <strong id="best-score">0</strong>
+          </div>
+        </div>
+      </section>
+
+      <section id="start-panel" class="start-panel" aria-label="Start game">
+        <p class="kicker">Precision arcade</p>
+        <h1>Stack the skyline.</h1>
+        <p>
+          Drop each moving floor onto the tower. Clean hits keep the full width;
+          sloppy edges get sliced away.
+        </p>
+        <button id="start-button" type="button">Start</button>
+      </section>
+
+      <section id="result-panel" class="result-panel hidden" aria-label="Round result">
+        <p class="kicker">Tower complete</p>
+        <h2 id="result-title">Nice run</h2>
+        <p id="result-copy">You reached 0 floors.</p>
+        <button id="restart-button" type="button">Play again</button>
+      </section>
+
+      <div class="hud hud-bottom" aria-hidden="true">
+        <span>Click</span>
+        <span>Tap</span>
+        <span>Space</span>
+      </div>
+    </main>
+
+    <script type="module" src="./src/stack-game.js"></script>
+  </body>
+</html>
