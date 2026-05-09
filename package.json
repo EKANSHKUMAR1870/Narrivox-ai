@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --env-file=.env server.js",
-    "test": "node --env-file=.env tests/server.test.js"
+    "test": "node --env-file=.env tests/server.test.js",
+    "build": "cd client && npm run build"
   },
   "dependencies": {
     "@huggingface/inference": "^4.13.15",

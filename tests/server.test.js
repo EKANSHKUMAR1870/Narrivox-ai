@@ -10,7 +10,7 @@ import {
   extractOpenRouterText,
   extractOutputText,
   generateScriptWithOpenRouter,
-  generateThumbnailWithOpenRouter,
+  generateThumbnail,
   normalizeScriptRequest,
   validateCredentials,
   validateScriptRequest
@@ -273,55 +273,27 @@ test("generateScriptWithOpenRouter surfaces provider errors", async () => {
   );
 });
 
-test("generateThumbnailWithOpenRouter returns generated image bytes", async () => {
-  const image = await generateThumbnailWithOpenRouter(
-    {
-      topic: "AI startup myths",
-      audience: "founders",
-      tone: "Bold and persuasive",
-      duration: "4 to 6 minutes",
-      objective: "",
-      keyPoints: "",
-      callToAction: ""
-    },
-    "script body",
-    {
-      apiKey: "test-key",
-      model: "openai/gpt-image-2",
-      fetchImpl: async (url, options) => {
-        assert.equal(
-          url,
-          "https://openrouter.ai/api/v1/chat/completions"
-        );
-        assert.equal(options.method, "POST");
+test("generateThumbnail calls textToImage and returns base64", async () => {
+  const fakeBlob = {
+    type: "image/webp",
+    arrayBuffer: async () => Buffer.from("fake-image-bytes")
+  };
 
-        return {
-          ok: true,
-          async json() {
-            return {
-              choices: [
-                {
-                  message: {
-                    images: [
-                      {
-                        image_url: {
-                          url: "data:image/png;base64,thumbnail-bytes"
-                        }
-                      }
-                    ]
-                  }
-                }
-              ]
-            };
-          }
-        };
+  const image = await generateThumbnail("a bold thumbnail", {
+    client: {
+      textToImage: async (params) => {
+        assert.equal(params.inputs, "a bold thumbnail");
+        assert.equal(params.model, "black-forest-labs/FLUX.1-schnell");
+        assert.deepEqual(params.parameters, { num_inference_steps: 5 });
+        return fakeBlob;
       }
-    }
-  );
+    },
+    model: "black-forest-labs/FLUX.1-schnell"
+  });
 
   assert.deepEqual(image, {
-    mimeType: "image/png",
-    base64: "thumbnail-bytes"
+    mimeType: "image/webp",
+    base64: Buffer.from("fake-image-bytes").toString("base64")
   });
 });
 
