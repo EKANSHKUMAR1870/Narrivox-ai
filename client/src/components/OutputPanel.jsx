@@ -1,18 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { requestJson } from '../api';
 
 export default function OutputPanel({ output, status, tone, thumbnail, thumbnailStatus, onThumbnailChange, onThumbnailStatusChange }) {
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
-  const imgRef = useRef(null);
 
-  useEffect(() => {
-    if (thumbnail?.base64) {
-      imgRef.current.src = `data:${thumbnail.mimeType || 'image/png'};base64,${thumbnail.base64}`;
-    } else {
-      imgRef.current.removeAttribute('src');
-    }
-  }, [thumbnail]);
+  const imageSrc = thumbnail?.base64
+    ? `data:${thumbnail.mimeType || 'image/png'};base64,${thumbnail.base64}`
+    : null;
 
   async function handleGenerateThumbnail() {
     if (!prompt.trim()) {
@@ -36,7 +31,6 @@ export default function OutputPanel({ output, status, tone, thumbnail, thumbnail
     }
   }
 
-  const showThumbnail = thumbnail?.base64;
   const thumbPlaceholder = thumbnailStatus || 'Write a prompt above, then click Generate Thumbnail.';
 
   return (
@@ -75,8 +69,8 @@ export default function OutputPanel({ output, status, tone, thumbnail, thumbnail
           />
         </label>
 
-        {showThumbnail ? (
-          <img ref={imgRef} className="thumbnail-image" alt="Generated YouTube thumbnail preview" />
+        {imageSrc ? (
+          <img src={imageSrc} className="thumbnail-image" alt="Generated YouTube thumbnail preview" />
         ) : (
           <div className="thumbnail-empty">{thumbPlaceholder}</div>
         )}

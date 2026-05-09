@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { requestJson } from '../api';
 import Sidebar from './Sidebar';
 import ScriptForm from './ScriptForm';
 import OutputPanel from './OutputPanel';
@@ -28,11 +29,10 @@ export default function WorkspaceView({ user, scripts, onScriptsChange, onLogout
     setStatus('Generating script...');
 
     try {
-      const result = await fetch('/api/generate-script', {
+      const result = await requestJson('/api/generate-script', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
-      }).then((r) => r.json());
+      });
 
       setOutput(result.script);
       setStatus('Script ready');
@@ -48,9 +48,8 @@ export default function WorkspaceView({ user, scripts, onScriptsChange, onLogout
 
   async function handleDelete(id) {
     try {
-      await fetch('/api/delete-script', {
+      await requestJson('/api/delete-script', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scriptId: id }),
       });
 
