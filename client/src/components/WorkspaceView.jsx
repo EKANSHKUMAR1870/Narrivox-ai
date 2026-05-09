@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { requestJson } from '../api';
 import Sidebar from './Sidebar';
 import ScriptForm from './ScriptForm';
@@ -6,6 +6,8 @@ import OutputPanel from './OutputPanel';
 
 export default function WorkspaceView({ user, scripts, onScriptsChange, onLogout }) {
   const [currentId, setCurrentId] = useState(scripts[0]?.id || null);
+  const currentIdRef = useRef(currentId);
+  currentIdRef.current = currentId;
   const [output, setOutput] = useState('Your script will appear here.');
   const [status, setStatus] = useState('Ready for your next idea.');
   const [thumbnail, setThumbnail] = useState(null);
@@ -80,7 +82,6 @@ export default function WorkspaceView({ user, scripts, onScriptsChange, onLogout
           user={user}
           scripts={scripts}
           currentId={currentId}
-          tone={tone}
           onSelectScript={handleLoadScript}
           onDeleteScript={handleDelete}
           onNewScript={() => {
@@ -122,8 +123,9 @@ export default function WorkspaceView({ user, scripts, onScriptsChange, onLogout
               onThumbnailChange={(t) => {
                 setThumbnail(t);
                 setThumbnailStatus(null);
+                const id = currentIdRef.current;
                 onScriptsChange((prev) =>
-                  prev.map((s) => (s.id === currentId ? { ...s, thumbnail: t } : s))
+                  prev.map((s) => (s.id === id ? { ...s, thumbnail: t } : s))
                 );
               }}
               onThumbnailStatusChange={setThumbnailStatus}

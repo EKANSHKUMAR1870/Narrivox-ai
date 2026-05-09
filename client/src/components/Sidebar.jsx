@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 
-export default function Sidebar({ user, scripts, currentId, tone, onSelectScript, onDeleteScript, onNewScript, onLogout }) {
+export default function Sidebar({ user, scripts, currentId, onSelectScript, onDeleteScript, onNewScript, onLogout }) {
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {

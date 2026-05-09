@@ -32,15 +32,13 @@ export default function ScriptForm({ currentItem, onGenerate, onToneChange }) {
   }, [tone, onToneChange]);
 
   useEffect(() => {
-    if (currentItem) {
-      setTopic(currentItem.request?.topic || currentItem.topic || '');
-      setAudience(currentItem.request?.audience || '');
-      setTone(currentItem.request?.tone || currentItem.tone || 'Clear and motivational');
-      setDuration(currentItem.request?.duration || currentItem.duration || '4 to 6 minutes');
-      setObjective(currentItem.request?.objective || '');
-      setKeyPoints(currentItem.request?.keyPoints || '');
-      setCallToAction(currentItem.request?.callToAction || '');
-    }
+    setTopic(currentItem?.request?.topic || currentItem?.topic || '');
+    setAudience(currentItem?.request?.audience || '');
+    setTone(currentItem?.request?.tone || currentItem?.tone || 'Clear and motivational');
+    setDuration(currentItem?.request?.duration || currentItem?.duration || '4 to 6 minutes');
+    setObjective(currentItem?.request?.objective || '');
+    setKeyPoints(currentItem?.request?.keyPoints || '');
+    setCallToAction(currentItem?.request?.callToAction || '');
   }, [currentItem]);
 
   async function handleSubmit(e) {
