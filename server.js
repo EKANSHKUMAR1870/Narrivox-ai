@@ -1,9 +1,9 @@
-import { createReadStream, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import express from "express";
 import { InferenceClient } from "@huggingface/inference";
 import { createSession, hashPassword, normalizeEmail, validateSession, verifyPassword } from "./src/auth.js";
 import {
@@ -19,7 +19,7 @@ import {
 } from "./src/database.js";
 
 const rootDir = fileURLToPath(new URL("./public/", import.meta.url));
-const entryFilePath = process.argv[1] ? fileURLToPath(new URL(import.meta.url)) : "";
+const entryFileUrl = process.argv[1] ? fileURLToPath(new URL(import.meta.url)) : "";
 const port = Number(process.env.PORT || 3000);
 const openRouterApiKey = process.env.OPENROUTER_API_KEY;
 const hfToken = process.env.HF_TOKEN;
@@ -50,28 +50,6 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8"
 };
 
-function resolvePath(urlPath) {
-  const requestedPath = urlPath === "/" ? "/index.html" : urlPath;
-  const normalizedPath = normalize(requestedPath).replace(/^(\.\.[/\\])+/, "");
-  return join(rootDir, normalizedPath);
-}
-
-function sendJson(response, statusCode, payload) {
-  response.writeHead(statusCode, {
-    "Content-Type": contentTypes[".json"]
-  });
-  response.end(JSON.stringify(payload));
-}
-
-function getBearerToken(request) {
-  const header = request.headers.authorization || "";
-  if (!header.startsWith("Bearer ")) {
-    return "";
-  }
-
-  return header.slice("Bearer ".length).trim();
-}
-
 function sanitizeUser(user) {
   return {
     id: user.id,
@@ -93,18 +71,35 @@ function sanitizeScript(script) {
   };
 }
 
-async function readJsonBody(request) {
-  let body = "";
+function getBearerToken(req) {
+  const header = req.headers.authorization || "";
+  if (!header.startsWith("Bearer ")) return "";
+  return header.slice("Bearer ".length).trim();
+}
 
-  for await (const chunk of request) {
-    body += chunk;
+async function requireAuth(req, res) {
+  const token = getBearerToken(req);
+  const user = token ? await findUserBySessionToken(token) : null;
+
+  if (!user) {
+    res.status(401).json({ error: "Please log in to continue." });
+    return null;
   }
 
-  if (!body) {
-    return {};
+  const { session, activeSessions } = validateSession(user.sessions || [], token);
+
+  if (!session) {
+    await replaceUserSessions(user.id, activeSessions);
+    res.status(401).json({ error: "Your session is no longer valid. Please log in again." });
+    return null;
   }
 
-  return JSON.parse(body);
+  if (activeSessions.length !== (user.sessions || []).length) {
+    await replaceUserSessions(user.id, activeSessions);
+    user.sessions = activeSessions;
+  }
+
+  return { user };
 }
 
 export function normalizeScriptRequest(payload = {}) {
@@ -206,45 +201,22 @@ export function validateCredentials(payload = {}) {
   const password = String(payload.password || "").trim();
   const missingFields = [];
 
-  if (!email) {
-    missingFields.push("email");
-  }
-
-  if (!password) {
-    missingFields.push("password");
-  }
+  if (!email) missingFields.push("email");
+  if (!password) missingFields.push("password");
 
   if (missingFields.length > 0) {
-    return {
-      isValid: false,
-      missingFields,
-      data: { email, password }
-    };
+    return { isValid: false, missingFields, data: { email, password } };
   }
 
   if (!email.includes("@")) {
-    return {
-      isValid: false,
-      missingFields: [],
-      error: "Please enter a valid email address.",
-      data: { email, password }
-    };
+    return { isValid: false, missingFields: [], error: "Please enter a valid email address.", data: { email, password } };
   }
 
   if (password.length < 8) {
-    return {
-      isValid: false,
-      missingFields: [],
-      error: "Password must be at least 8 characters long.",
-      data: { email, password }
-    };
+    return { isValid: false, missingFields: [], error: "Password must be at least 8 characters long.", data: { email, password } };
   }
 
-  return {
-    isValid: true,
-    missingFields: [],
-    data: { email, password }
-  };
+  return { isValid: true, missingFields: [], data: { email, password } };
 }
 
 export async function generateScriptWithOpenRouter(data, options = {}) {
@@ -256,12 +228,7 @@ export async function generateScriptWithOpenRouter(data, options = {}) {
     throw new Error("Missing OPENROUTER_API_KEY environment variable.");
   }
 
-  const payload = await requestOpenRouterChat({
-    apiKey,
-    model,
-    fetchImpl,
-    prompt: buildPrompt(data)
-  });
+  const payload = await requestOpenRouterChat({ apiKey, model, fetchImpl, prompt: buildPrompt(data) });
   const finalText = extractOpenRouterText(payload).trim();
 
   if (!finalText) {
@@ -273,15 +240,10 @@ export async function generateScriptWithOpenRouter(data, options = {}) {
 
 export function extractOpenRouterText(payload) {
   const content = payload?.choices?.[0]?.message?.content;
-  if (typeof content === "string") {
-    return content;
-  }
+  if (typeof content === "string") return content;
 
   if (Array.isArray(content)) {
-    return content
-      .map((part) => (typeof part?.text === "string" ? part.text : ""))
-      .filter(Boolean)
-      .join("\n\n");
+    return content.map((part) => (typeof part?.text === "string" ? part.text : "")).filter(Boolean).join("\n\n");
   }
 
   return "";
@@ -305,29 +267,20 @@ export async function generateThumbnail(prompt, options = {}) {
   const buffer = Buffer.from(await imageBlob.arrayBuffer());
   const base64 = buffer.toString("base64");
 
-  return {
-    mimeType: imageBlob.type || "image/png",
-    base64
-  };
+  return { mimeType: imageBlob.type || "image/png", base64 };
 }
 
 export function extractOutputText(payload) {
   const candidates = payload?.candidates;
-  if (!Array.isArray(candidates)) {
-    return "";
-  }
+  if (!Array.isArray(candidates)) return "";
 
   const textParts = [];
 
   candidates.forEach((candidate) => {
-    if (!Array.isArray(candidate?.content?.parts)) {
-      return;
-    }
+    if (!Array.isArray(candidate?.content?.parts)) return;
 
     candidate.content.parts.forEach((part) => {
-      if (typeof part?.text === "string") {
-        textParts.push(part.text);
-      }
+      if (typeof part?.text === "string") textParts.push(part.text);
     });
   });
 
@@ -336,24 +289,17 @@ export function extractOutputText(payload) {
 
 export function extractGeneratedImage(payload) {
   const candidates = payload?.candidates;
-  if (!Array.isArray(candidates) || candidates.length === 0) {
-    return null;
-  }
+  if (!Array.isArray(candidates) || candidates.length === 0) return null;
 
   for (const candidate of candidates) {
-    if (!Array.isArray(candidate?.content?.parts)) {
-      continue;
-    }
+    if (!Array.isArray(candidate?.content?.parts)) continue;
 
     for (const part of candidate.content.parts) {
       const inlineData = part?.inlineData || part?.inline_data;
       const bytes = inlineData?.data;
 
       if (typeof bytes === "string" && bytes) {
-        return {
-          mimeType: inlineData?.mimeType || inlineData?.mime_type || "image/png",
-          base64: bytes
-        };
+        return { mimeType: inlineData?.mimeType || inlineData?.mime_type || "image/png", base64: bytes };
       }
     }
   }
@@ -364,23 +310,15 @@ export function extractGeneratedImage(payload) {
 export function extractOpenRouterImage(payload) {
   const directImage = payload?.data?.[0];
   if (typeof directImage?.b64_json === "string" && directImage.b64_json) {
-    return {
-      mimeType: "image/png",
-      base64: directImage.b64_json
-    };
+    return { mimeType: "image/png", base64: directImage.b64_json };
   }
 
   const dataUrl = payload?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
   if (typeof dataUrl === "string" && dataUrl.startsWith("data:")) {
     const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (!match) {
-      return null;
-    }
+    if (!match) return null;
 
-    return {
-      mimeType: match[1] || "image/png",
-      base64: match[2]
-    };
+    return { mimeType: match[1] || "image/png", base64: match[2] };
   }
 
   return null;
@@ -391,35 +329,14 @@ export function extractFinishReason(payload) {
   return typeof finishReason === "string" ? finishReason : "";
 }
 
-async function requestGeminiContent({
-  apiKey,
-  model,
-  fetchImpl,
-  contents,
-  systemInstruction,
-  generationConfig
-}) {
+async function requestGeminiContent({ apiKey, model, fetchImpl, contents, systemInstruction, generationConfig }) {
   const apiResponse = await fetchImpl(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
-      apiKey
-    )}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ...(systemInstruction
-          ? {
-              systemInstruction: {
-                parts: [
-                  {
-                    text: systemInstruction
-                  }
-                ]
-              }
-            }
-          : {}),
+        ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction }] } } : {}),
         contents,
         ...(generationConfig ? { generationConfig } : {})
       })
@@ -427,16 +344,11 @@ async function requestGeminiContent({
   );
 
   let payload = null;
-  try {
-    payload = await apiResponse.json();
-  } catch {
-    payload = null;
-  }
+  try { payload = await apiResponse.json(); } catch { payload = null; }
 
   if (!apiResponse.ok) {
-    const message = payload?.error?.message || "The AI provider returned an error.";
-    throw new Error(message);
-  };
+    throw new Error(payload?.error?.message || "The AI provider returned an error.");
+  }
 
   return payload;
 }
@@ -451,252 +363,37 @@ async function requestOpenRouterChat({ apiKey, model, fetchImpl, prompt }) {
     body: JSON.stringify({
       model,
       messages: [
-        {
-          role: "system",
-          content:
-            "You are an expert YouTube strategist and script writer. Write engaging, structured scripts that feel human and clear."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
+        { role: "system", content: "You are an expert YouTube strategist and script writer. Write engaging, structured scripts that feel human and clear." },
+        { role: "user", content: prompt }
       ],
       temperature: 0.9
     })
   });
 
   let payload = null;
-  try {
-    payload = await apiResponse.json();
-  } catch {
-    payload = null;
-  }
+  try { payload = await apiResponse.json(); } catch { payload = null; }
 
   if (!apiResponse.ok) {
-    const message = payload?.error?.message || "The AI provider returned an error.";
-    throw new Error(message);
+    throw new Error(payload?.error?.message || "The AI provider returned an error.");
   }
 
   return payload;
 }
 
-async function requestOpenRouterImage({ apiKey, model, fetchImpl, prompt }) {
-  const normalizedModel = typeof model === "string" ? model.trim() : "";
-  const attemptedModels = [];
+// Express app
 
-  if (normalizedModel) {
-    // OpenRouter typically requires provider-prefixed IDs like `openai/gpt-image-2`.
-    if (normalizedModel.includes("/")) {
-      attemptedModels.push(normalizedModel);
-    } else if (normalizedModel.startsWith("gpt-image-")) {
-      attemptedModels.push(`openai/${normalizedModel}`);
-    } else {
-      attemptedModels.push(normalizedModel);
-    }
-  }
+const app = express();
+app.use(express.json());
 
-  if (attemptedModels.length === 0) {
-    attemptedModels.push("openai/gpt-image-2");
-  }
+// Auth routes
 
-  let lastError = "The image provider returned an error.";
-
-  for (const modelCandidate of attemptedModels) {
-    const apiResponse = await fetchImpl("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: modelCandidate,
-        messages: [
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        modalities: ["image", "text"]
-      })
-    });
-
-    let payload = null;
-    try {
-      payload = await apiResponse.json();
-    } catch {
-      payload = null;
-    }
-
-    if (apiResponse.ok) {
-      return payload;
-    }
-
-    const providerMessage = payload?.error?.message || payload?.message || "Request failed.";
-    lastError = `Image provider error (${apiResponse.status}) using model "${modelCandidate}": ${providerMessage}`;
-  }
-
-  throw new Error(lastError);
-}
-
-async function requireAuthenticatedUser(request, response) {
-  const token = getBearerToken(request);
-  const user = token ? await findUserBySessionToken(token) : null;
-
-  if (!user) {
-    sendJson(response, 401, {
-      error: "Please log in to continue."
-    });
-    return null;
-  }
-
-  const { session, activeSessions } = validateSession(user.sessions || [], token);
-
-  if (!session) {
-    await replaceUserSessions(user.id, activeSessions);
-    sendJson(response, 401, {
-      error: "Your session is no longer valid. Please log in again."
-    });
-    return null;
-  }
-
-  if (activeSessions.length !== (user.sessions || []).length) {
-    await replaceUserSessions(user.id, activeSessions);
-    user.sessions = activeSessions;
-  }
-
-  return {
-    user
-  };
-}
-
-export async function handleGenerateScript(request, response) {
+app.post("/api/auth/signup", async (req, res) => {
   try {
-    const payload = await readJsonBody(request);
-    const validation = validateScriptRequest(payload);
+    const validation = validateCredentials(req.body);
 
     if (!validation.isValid) {
-      sendJson(response, 400, {
-        error: `Missing required fields: ${validation.missingFields.join(", ")}`
-      });
-      return;
-    }
-
-    const auth = await requireAuthenticatedUser(request, response);
-    if (!auth) {
-      return;
-    }
-
-    const script = await generateScriptWithOpenRouter(validation.data);
-    const savedScript = {
-      id: randomUUID(),
-      userId: auth.user.id,
-      topic: validation.data.topic,
-      tone: validation.data.tone,
-      duration: validation.data.duration,
-      createdAt: new Date().toISOString(),
-      request: validation.data,
-      script,
-      thumbnail: null
-    };
-
-    await createScriptRecord(savedScript);
-
-    sendJson(response, 200, {
-      script,
-      savedScript: sanitizeScript(savedScript)
-    });
-  } catch (error) {
-    const statusCode = error instanceof SyntaxError ? 400 : 500;
-    sendJson(response, statusCode, {
-      error: error instanceof Error ? error.message : "Something went wrong."
-    });
-  }
-}
-
-export async function handleGenerateThumbnail(request, response) {
-  try {
-    const auth = await requireAuthenticatedUser(request, response);
-    if (!auth) {
-      return;
-    }
-
-    const payload = await readJsonBody(request);
-    const prompt = String(payload.prompt || "").trim();
-
-    if (!prompt) {
-      sendJson(response, 400, {
-        error: "Missing required field: prompt"
-      });
-      return;
-    }
-
-    const generatedThumbnail = await generateThumbnail(prompt);
-    const thumbnail = {
-      mimeType: generatedThumbnail.mimeType,
-      base64: generatedThumbnail.base64,
-      generatedAt: new Date().toISOString()
-    };
-
-    sendJson(response, 200, {
-      thumbnail
-    });
-  } catch (error) {
-    const statusCode = error instanceof SyntaxError ? 400 : 500;
-    sendJson(response, statusCode, {
-      error: error instanceof Error ? error.message : "Something went wrong."
-    });
-  }
-}
-
-export async function handleDeleteScript(request, response) {
-  try {
-    const auth = await requireAuthenticatedUser(request, response);
-    if (!auth) {
-      return;
-    }
-
-    const payload = await readJsonBody(request);
-    const scriptId = String(payload.scriptId || "").trim();
-
-    if (!scriptId) {
-      sendJson(response, 400, {
-        error: "Missing required field: scriptId"
-      });
-      return;
-    }
-
-    const existingScript = await findScriptById(scriptId, auth.user.id);
-
-    if (!existingScript) {
-      sendJson(response, 404, {
-        error: "Saved script not found."
-      });
-      return;
-    }
-
-    await deleteScriptRecord(scriptId, auth.user.id);
-
-    sendJson(response, 200, {
-      deletedId: scriptId
-    });
-  } catch (error) {
-    const statusCode = error instanceof SyntaxError ? 400 : 500;
-    sendJson(response, statusCode, {
-      error: error instanceof Error ? error.message : "Something went wrong."
-    });
-  }
-}
-
-export async function handleSignup(request, response) {
-  try {
-    const payload = await readJsonBody(request);
-    const validation = validateCredentials(payload);
-
-    if (!validation.isValid) {
-      sendJson(response, 400, {
-        error:
-          validation.error ||
-          `Missing required fields: ${validation.missingFields.join(", ")}`
+      res.status(400).json({
+        error: validation.error || `Missing required fields: ${validation.missingFields.join(", ")}`
       });
       return;
     }
@@ -719,28 +416,25 @@ export async function handleSignup(request, response) {
 
     await createUser(createdUser);
 
-    sendJson(response, 201, {
+    res.status(201).json({
       token: session.token,
       user: sanitizeUser(createdUser),
       scripts: []
     });
   } catch (error) {
-    sendJson(response, 400, {
+    res.status(400).json({
       error: error instanceof Error ? error.message : "Unable to create account."
     });
   }
-}
+});
 
-export async function handleLogin(request, response) {
+app.post("/api/auth/login", async (req, res) => {
   try {
-    const payload = await readJsonBody(request);
-    const validation = validateCredentials(payload);
+    const validation = validateCredentials(req.body);
 
     if (!validation.isValid) {
-      sendJson(response, 400, {
-        error:
-          validation.error ||
-          `Missing required fields: ${validation.missingFields.join(", ")}`
+      res.status(400).json({
+        error: validation.error || `Missing required fields: ${validation.missingFields.join(", ")}`
       });
       return;
     }
@@ -758,128 +452,169 @@ export async function handleLogin(request, response) {
 
     const scripts = (await listScriptsByUserId(user.id, 30)).map(sanitizeScript);
 
-    sendJson(response, 200, {
+    res.status(200).json({
       token: session.token,
       user: sanitizeUser(user),
       scripts
     });
   } catch (error) {
-    sendJson(response, 401, {
+    res.status(401).json({
       error: error instanceof Error ? error.message : "Unable to log in."
     });
   }
-}
+});
 
-export async function handleSession(request, response) {
-  const auth = await requireAuthenticatedUser(request, response);
-  if (!auth) {
-    return;
-  }
+app.get("/api/auth/session", async (req, res) => {
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
 
   const scripts = (await listScriptsByUserId(auth.user.id, 30)).map(sanitizeScript);
 
-  sendJson(response, 200, {
+  res.json({
     user: sanitizeUser(auth.user),
     scripts
   });
-}
+});
 
-export async function handleLogout(request, response) {
-  const token = getBearerToken(request);
+app.post("/api/auth/logout", async (req, res) => {
+  const token = getBearerToken(req);
   const user = token ? await findUserBySessionToken(token) : null;
 
   if (!token || !user) {
-    sendJson(response, 204, {});
+    res.sendStatus(204);
     return;
   }
 
   const nextSessions = (user.sessions || []).filter((session) => session.token !== token);
   await replaceUserSessions(user.id, nextSessions);
 
-  sendJson(response, 204, {});
-}
+  res.sendStatus(204);
+});
 
-function serveStaticFile(filePath, response) {
-  response.writeHead(200, {
-    "Content-Type": contentTypes[extname(filePath)] || "application/octet-stream"
-  });
-  createReadStream(filePath).pipe(response);
-}
+// Script routes
 
-export async function handleRequest(request, response) {
-  const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
-
-  if (request.method === "POST" && requestUrl.pathname === "/api/auth/signup") {
-    await handleSignup(request, response);
-    return;
-  }
-
-  if (request.method === "POST" && requestUrl.pathname === "/api/auth/login") {
-    await handleLogin(request, response);
-    return;
-  }
-
-  if (request.method === "GET" && requestUrl.pathname === "/api/auth/session") {
-    await handleSession(request, response);
-    return;
-  }
-
-  if (request.method === "POST" && requestUrl.pathname === "/api/auth/logout") {
-    await handleLogout(request, response);
-    return;
-  }
-
-  if (request.method === "POST" && requestUrl.pathname === "/api/generate-script") {
-    await handleGenerateScript(request, response);
-    return;
-  }
-
-  if (request.method === "POST" && requestUrl.pathname === "/api/generate-thumbnail") {
-    await handleGenerateThumbnail(request, response);
-    return;
-  }
-
-  if (request.method === "POST" && requestUrl.pathname === "/api/delete-script") {
-    await handleDeleteScript(request, response);
-    return;
-  }
-
-  const filePath = resolvePath(requestUrl.pathname);
-
+app.post("/api/generate-script", async (req, res) => {
   try {
-    const fileStats = await stat(filePath);
-    if (!fileStats.isFile()) {
-      response.writeHead(404);
-      response.end("Not found");
+    const validation = validateScriptRequest(req.body);
+
+    if (!validation.isValid) {
+      res.status(400).json({
+        error: `Missing required fields: ${validation.missingFields.join(", ")}`
+      });
       return;
     }
 
-    serveStaticFile(filePath, response);
-  } catch {
-    const fallbackPath = resolvePath("/index.html");
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
 
-    if (existsSync(fallbackPath)) {
-      serveStaticFile(fallbackPath, response);
-      return;
-    }
+    const scriptText = await generateScriptWithOpenRouter(validation.data);
+    const savedScript = {
+      id: randomUUID(),
+      userId: auth.user.id,
+      topic: validation.data.topic,
+      tone: validation.data.tone,
+      duration: validation.data.duration,
+      createdAt: new Date().toISOString(),
+      request: validation.data,
+      script: scriptText,
+      thumbnail: null
+    };
 
-    response.writeHead(404);
-    response.end("Not found");
+    await createScriptRecord(savedScript);
+
+    res.json({
+      script: scriptText,
+      savedScript: sanitizeScript(savedScript)
+    });
+  } catch (error) {
+    res.status(error instanceof SyntaxError ? 400 : 500).json({
+      error: error instanceof Error ? error.message : "Something went wrong."
+    });
   }
-}
+});
 
-export default async function handler(request, response) {
-  await handleRequest(request, response);
-}
+app.post("/api/generate-thumbnail", async (req, res) => {
+  try {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
 
-export function createAppServer() {
-  return createServer(handleRequest);
-}
+    const prompt = String(req.body.prompt || "").trim();
 
-if (entryFilePath === process.argv[1]) {
-  const server = createAppServer();
+    if (!prompt) {
+      res.status(400).json({ error: "Missing required field: prompt" });
+      return;
+    }
 
-  server.listen(port, () => {
+    const generated = await generateThumbnail(prompt);
+    const thumbnail = {
+      mimeType: generated.mimeType,
+      base64: generated.base64,
+      generatedAt: new Date().toISOString()
+    };
+
+    res.json({ thumbnail });
+  } catch (error) {
+    res.status(error instanceof SyntaxError ? 400 : 500).json({
+      error: error instanceof Error ? error.message : "Something went wrong."
+    });
+  }
+});
+
+app.post("/api/delete-script", async (req, res) => {
+  try {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+
+    const scriptId = String(req.body.scriptId || "").trim();
+
+    if (!scriptId) {
+      res.status(400).json({ error: "Missing required field: scriptId" });
+      return;
+    }
+
+    const existingScript = await findScriptById(scriptId, auth.user.id);
+
+    if (!existingScript) {
+      res.status(404).json({ error: "Saved script not found." });
+      return;
+    }
+
+    await deleteScriptRecord(scriptId, auth.user.id);
+
+    res.json({ deletedId: scriptId });
+  } catch (error) {
+    res.status(error instanceof SyntaxError ? 400 : 500).json({
+      error: error instanceof Error ? error.message : "Something went wrong."
+    });
+  }
+});
+
+// Static file serving
+
+app.use(express.static(rootDir, {
+  setHeaders(response, filePath) {
+    const contentType = contentTypes[extname(filePath)];
+    if (contentType) {
+      response.setHeader("Content-Type", contentType);
+    }
+  }
+}));
+
+// SPA fallback
+
+app.get("/{*path}", (req, res) => {
+  const indexPath = join(rootDir, "index.html");
+  if (existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send("Not found");
+  }
+});
+
+export default app;
+
+if (entryFileUrl === process.argv[1]) {
+  app.listen(port, () => {
     console.log(`Narrivox AI available at http://localhost:${port}`);
   });
 }
